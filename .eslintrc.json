@@ -1,0 +1,95 @@
+{
+  "extends": ["next/core-web-vitals", "next/typescript"],
+  "plugins": ["@typescript-eslint"],
+  "rules": {
+    "max-lines": ["error", { "max": 800, "skipBlankLines": true, "skipComments": true }],
+    "@typescript-eslint/no-explicit-any": "error",
+    "@typescript-eslint/no-non-null-assertion": "error",
+    "@typescript-eslint/consistent-type-imports": "error"
+  },
+  "overrides": [
+    {
+      "files": ["lib/domain/**/*.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "react",
+                  "react-dom",
+                  "next/*",
+                  "@/components/*",
+                  "@/app/*",
+                  "@/lib/application/*",
+                  "@/lib/infrastructure/*",
+                  "@mediapipe/*"
+                ],
+                "message": "domain must be pure: no React/Next/Infra/MediaPipe"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["lib/infrastructure/**/*.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@/components/*", "@/app/*", "@/lib/application/*"],
+                "message": "infrastructure cannot import application/components/app"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["lib/application/**/*.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@/components/*", "@/app/*"],
+                "message": "application cannot import components/app"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["components/**/*.tsx"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@/lib/infrastructure/*"],
+                "message": "components must use application hooks, not infrastructure directly"
+              },
+              {
+                "group": ["@/app/*"],
+                "message": "components cannot import app"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["tests/**/*.ts", "tests/**/*.tsx"],
+      "rules": {
+        "max-lines": "off"
+      }
+    }
+  ]
+}
