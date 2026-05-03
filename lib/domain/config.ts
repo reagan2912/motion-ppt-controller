@@ -3,10 +3,10 @@ import type { SwipeConfig } from './types';
 export const DEFAULT_SWIPE_CONFIG: SwipeConfig = {
   WINDOW_MS: 600,
   MIN_SAMPLES: 2,
-  OPEN_PALM_RATIO: 0.0,
-  MIN_SCORE: 0.0,
+  OPEN_PALM_RATIO: 0.5,  // 50% 이상이 Open_Palm 또는 Pointing_Up이어야 인식
+  MIN_SCORE: 0.5,        // 신뢰도 기준
   DELTA_X_THRESHOLD: 0.08,
-  COOLDOWN_MS: 2000,       // 1200 → 2000ms: 팔 돌아오는 동작 완전 차단
+  COOLDOWN_MS: 2000,
   INVERT_DIRECTION: false,
 } as const;
 

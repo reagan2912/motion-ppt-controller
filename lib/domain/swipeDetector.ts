@@ -1,5 +1,4 @@
 // 스와이프 판정 — 순수 함수, 외부 의존 0
-// 손 모양 체크 제거 — 손목 이동 거리 + 속도만으로 판정
 import type { DetectorState, DetectResult, Sample, SwipeConfig } from './types';
 
 export function createInitialState(): DetectorState {
@@ -7,8 +6,8 @@ export function createInitialState(): DetectorState {
 }
 
 /**
- * 손 모양(gesture) 체크 없이 손목 이동만으로 스와이프 판정.
- * 빠르게 움직이면 None이어도 인식, 천천히 움직이면 무시.
+ * Open_Palm(손바닥) 또는 Pointing_Up(검지) 제스처일 때만 스와이프 판정.
+ * 다른 손 모양(주먹 등)은 무시.
  */
 export function detectSwipe(
   state: DetectorState,
@@ -34,6 +33,18 @@ export function detectSwipe(
     return { state: nextStateBase, swipe: null };
   }
 
+  // 제스처 체크 — Open_Palm 또는 Pointing_Up 비율 확인
+  const validCount = windowed.filter(
+    (s) =>
+      (s.gesture === 'Open_Palm' || s.gesture === 'Pointing_Up') &&
+      s.score >= config.MIN_SCORE,
+  ).length;
+  const validRatio = validCount / windowed.length;
+
+  if (validRatio < config.OPEN_PALM_RATIO) {
+    return { state: nextStateBase, swipe: null };
+  }
+
   const first = windowed[0];
   const last = windowed[windowed.length - 1];
   if (first === undefined || last === undefined) {
@@ -46,7 +57,7 @@ export function detectSwipe(
     return { state: nextStateBase, swipe: null };
   }
 
-  // 5. 이동 속도 확인 — 너무 천천히 움직이면 무시 (팔 돌아오는 동작 방지)
+  // 이동 속도 — 천천히 움직이면 무시
   const elapsed = last.t - first.t;
   const speed = elapsed > 0 ? Math.abs(deltaX) / elapsed : 0;
   if (speed < 0.0003) {

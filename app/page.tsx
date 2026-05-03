@@ -39,10 +39,10 @@ function PresentationApp() {
   const [swipeTrigger, setSwipeTrigger] = useState<SwipeDirection | 'boundary' | null>(null);
   const [containerWidth, setContainerWidth] = useState(800);
   const [unsupported, setUnsupported] = useState(false);
+  const [cameraOn, setCameraOn] = useState(true); // 카메라 ON/OFF 상태
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  // 디버그용 — DebugOverlay가 직접 등록한 setter를 여기 보관
   const debugSampleSetterRef = useRef<((s: Sample) => void) | null>(null);
 
   const pdfDoc = usePdfDocument();
@@ -70,7 +70,7 @@ function PresentationApp() {
     return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, []);
 
-  const gestureEnabled = mode === 'present' && tabVisible;
+  const gestureEnabled = mode === 'present' && tabVisible && cameraOn;
 
   const handleSwipe = useCallback(
     (dir: SwipeDirection) => {
@@ -123,13 +123,10 @@ function PresentationApp() {
     }
   }, []);
 
-  // GestureController → DebugOverlay 샘플 전달
-  // ref를 통해 직접 호출하므로 리렌더 없음
   const handleSample = useCallback((s: Sample) => {
     debugSampleSetterRef.current?.(s);
   }, []);
 
-  // DebugOverlay가 마운트될 때 setter를 등록
   const handleOnSampleRef = useCallback((setter: (s: Sample) => void) => {
     debugSampleSetterRef.current = setter;
   }, []);
@@ -211,16 +208,27 @@ function PresentationApp() {
         enabled={gestureEnabled}
       />
 
-      <CameraPreview videoRef={videoRef as RefObject<HTMLVideoElement>} />
+      {/* 카메라 ON일 때만 프리뷰 표시 */}
+      {cameraOn && <CameraPreview videoRef={videoRef as RefObject<HTMLVideoElement>} />}
+
       <SwipeFeedback trigger={swipeTrigger} />
 
       {pdfDoc.state.pageCount > 0 && (
         <PageIndicator current={pdfDoc.state.currentPage} total={pdfDoc.state.pageCount} />
       )}
 
-      {/* 디버그 오버레이 — isDebug=true 일 때만 실제 렌더 */}
       <DebugOverlay isDebug={isDebug} onSampleRef={handleOnSampleRef} />
 
+      {/* 카메라 토글 버튼 */}
+      <button
+        className={`camera-toggle-btn${cameraOn ? '' : ' off'}`}
+        onClick={() => setCameraOn((v) => !v)}
+        title={cameraOn ? '카메라 끄기' : '카메라 켜기'}
+      >
+        {cameraOn ? '📷' : '📷✕'}
+      </button>
+
+      {/* 종료 버튼 */}
       <button
         className="exit-btn"
         onClick={() => { setMode('idle'); pdfDoc.close(); }}
@@ -242,10 +250,20 @@ function PresentationApp() {
       <style>{`
         .present-screen { position:fixed; inset:0; background:var(--bg); display:flex; align-items:center; justify-content:center; overflow:hidden; }
         .pdf-container { width:100vw; height:100vh; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+        .camera-toggle-btn {
+          position:fixed; bottom:60px; right:16px;
+          width:44px; height:44px; border-radius:50%;
+          background:rgba(0,0,0,0.6); border:1px solid rgba(255,255,255,0.3);
+          color:var(--fg); font-size:16px; cursor:pointer; z-index:200;
+          display:flex; align-items:center; justify-content:center;
+          transition:background 0.2s;
+        }
+        .camera-toggle-btn:hover { background:rgba(0,217,192,0.3); }
+        .camera-toggle-btn.off { background:rgba(255,90,95,0.4); border-color:var(--error); }
         .exit-btn { position:fixed; bottom:16px; right:16px; width:36px; height:36px; border-radius:50%; background:rgba(0,0,0,0.5); border:1px solid rgba(255,255,255,0.2); color:var(--fg); font-size:14px; cursor:pointer; z-index:200; display:flex; align-items:center; justify-content:center; transition:background 0.2s; }
         .exit-btn:hover { background:rgba(255,90,95,0.4); }
-        .gesture-loading { position:fixed; bottom:60px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.7); color:var(--muted); font-size:0.8rem; padding:6px 14px; border-radius:20px; z-index:200; }
-        .present-error { position:fixed; bottom:60px; left:50%; transform:translateX(-50%); background:rgba(255,90,95,0.15); border:1px solid var(--error); color:var(--error); font-size:0.85rem; padding:8px 16px; border-radius:8px; z-index:200; display:flex; gap:12px; align-items:center; }
+        .gesture-loading { position:fixed; bottom:110px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.7); color:var(--muted); font-size:0.8rem; padding:6px 14px; border-radius:20px; z-index:200; }
+        .present-error { position:fixed; bottom:110px; left:50%; transform:translateX(-50%); background:rgba(255,90,95,0.15); border:1px solid var(--error); color:var(--error); font-size:0.85rem; padding:8px 16px; border-radius:8px; z-index:200; display:flex; gap:12px; align-items:center; }
         .present-error button { background:none; border:none; color:var(--error); cursor:pointer; text-decoration:underline; font-size:0.8rem; }
       `}</style>
     </div>
