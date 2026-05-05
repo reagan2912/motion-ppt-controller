@@ -26,6 +26,9 @@ function makeSamples(
   return Array.from({ length: count }, (_, i) => ({
     t: startT + i * intervalMs,
     x: startX + ((endX - startX) * i) / Math.max(count - 1, 1),
+    y: 0.5,
+    indexX: startX + ((endX - startX) * i) / Math.max(count - 1, 1),
+    indexY: 0.5,
     gesture,
     score,
   }));
@@ -35,10 +38,10 @@ const cfg = DEFAULT_SWIPE_CONFIG;
 
 // 샘플 배열을 초기 상태에서 순차 실행하고 마지막 결과 반환
 function runSamples(samples: Sample[], config: SwipeConfig) {
-  return samples.reduce((acc, s) => detectSwipe(acc.state, s, config), {
-    state: createInitialState(),
-    swipe: null,
-  } as ReturnType<typeof detectSwipe>);
+  return samples.reduce(
+    (acc, s) => detectSwipe(acc.state, s, config),
+    { state: createInitialState(), swipe: null } as ReturnType<typeof detectSwipe>,
+  );
 }
 
 describe('createInitialState', () => {
@@ -53,7 +56,7 @@ describe('detectSwipe', () => {
   // T-01: 빈 buffer + 1 sample → null
   it('T-01: 버퍼가 1개면 swipe=null, buffer에 샘플 1개', () => {
     const state = createInitialState();
-    const sample: Sample = { t: 100, x: 0.5, gesture: 'Open_Palm', score: 0.9 };
+    const sample: Sample = { t: 100, x: 0.5, y: 0.5, indexX: 0.5, indexY: 0.5, gesture: 'Open_Palm', score: 0.9 };
     const result = detectSwipe(state, sample, cfg);
     expect(result.swipe).toBeNull();
     expect(result.state.buffer).toHaveLength(1);
@@ -84,11 +87,11 @@ describe('detectSwipe', () => {
   // T-05: 5개 중 2개만 Open_Palm (ratio=0.4 < 0.7) → null
   it('T-05: Open_Palm 비율이 임계 미만이면 swipe=null', () => {
     const mixed: Sample[] = [
-      { t: 0, x: 0.2, gesture: 'Open_Palm', score: 0.9 },
-      { t: 50, x: 0.25, gesture: 'Closed_Fist', score: 0.9 },
-      { t: 100, x: 0.3, gesture: 'Closed_Fist', score: 0.9 },
-      { t: 150, x: 0.4, gesture: 'Closed_Fist', score: 0.9 },
-      { t: 200, x: 0.5, gesture: 'Open_Palm', score: 0.9 },
+      { t: 0, x: 0.2, y: 0.5, indexX: 0.2, indexY: 0.5, gesture: 'Open_Palm', score: 0.9 },
+      { t: 50, x: 0.25, y: 0.5, indexX: 0.25, indexY: 0.5, gesture: 'Closed_Fist', score: 0.9 },
+      { t: 100, x: 0.3, y: 0.5, indexX: 0.3, indexY: 0.5, gesture: 'Closed_Fist', score: 0.9 },
+      { t: 150, x: 0.4, y: 0.5, indexX: 0.4, indexY: 0.5, gesture: 'Closed_Fist', score: 0.9 },
+      { t: 200, x: 0.5, y: 0.5, indexX: 0.5, indexY: 0.5, gesture: 'Open_Palm', score: 0.9 },
     ];
     expect(runSamples(mixed, cfg).swipe).toBeNull();
   });
@@ -103,7 +106,7 @@ describe('detectSwipe', () => {
   it('T-07: 쿨다운 중에는 swipe=null이고 buffer는 빈 배열', () => {
     // 쿨다운이 설정된 상태 직접 생성
     const frozenState = { buffer: [], cooldownUntil: 9999 };
-    const sample: Sample = { t: 100, x: 0.5, gesture: 'Open_Palm', score: 0.9 };
+    const sample: Sample = { t: 100, x: 0.5, y: 0.5, indexX: 0.5, indexY: 0.5, gesture: 'Open_Palm', score: 0.9 };
     const result = detectSwipe(frozenState, sample, cfg);
     expect(result.swipe).toBeNull();
     expect(result.state.buffer).toHaveLength(0);
@@ -112,11 +115,14 @@ describe('detectSwipe', () => {
   // T-08: 윈도우 외 샘플은 제거됨
   it('T-08: WINDOW_MS 밖의 샘플은 제거된다', () => {
     // 아주 오래된 샘플 1개 먼저 통과
-    const old: Sample = { t: 0, x: 0.1, gesture: 'Open_Palm', score: 0.9 };
+    const old: Sample = { t: 0, x: 0.1, y: 0.5, indexX: 0.1, indexY: 0.5, gesture: 'Open_Palm', score: 0.9 };
     const afterOld = detectSwipe(createInitialState(), old, cfg);
     // 600ms 후 새 샘플들 (WINDOW_MS=500 → 오래된 샘플은 제거됨)
     const fresh = makeSamples(5, { startX: 0.2, endX: 0.5, startT: 600 });
-    const result = fresh.reduce((acc, s) => detectSwipe(acc.state, s, cfg), afterOld);
+    const result = fresh.reduce(
+      (acc, s) => detectSwipe(acc.state, s, cfg),
+      afterOld,
+    );
     expect(result.swipe).toBe('right');
   });
 
@@ -152,6 +158,9 @@ describe('detectSwipe', () => {
     const sameT: Sample[] = Array.from({ length: 5 }, (_, i) => ({
       t: 100,
       x: 0.2 + i * 0.07,
+      y: 0.5,
+      indexX: 0.2 + i * 0.07,
+      indexY: 0.5,
       gesture: 'Open_Palm' as const,
       score: 0.9,
     }));

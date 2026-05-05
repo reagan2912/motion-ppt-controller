@@ -34,11 +34,16 @@ export async function createGestureLoop(): Promise<GestureLoop> {
     recognize(video, t) {
       const result = recognizer.recognizeForVideo(video, t);
       const top = result.gestures?.[0]?.[0];
-      const wrist = result.landmarks?.[0]?.[0];
+      const landmarks = result.landmarks?.[0];
+      const wrist = landmarks?.[0];
+      const indexTip = landmarks?.[8]; // 검지 끝
       if (!top || !wrist) return null;
       return {
         t,
         x: wrist.x,
+        y: wrist.y ?? 0,
+        indexX: indexTip?.x ?? wrist.x,
+        indexY: indexTip?.y ?? wrist.y ?? 0,
         gesture: top.categoryName as GestureName,
         score: top.score ?? 0,
       };

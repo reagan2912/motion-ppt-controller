@@ -12,10 +12,13 @@ export type GestureName =
 
 // 제스처 루프 한 프레임의 샘플 (불변)
 export type Sample = Readonly<{
-  t: number; // 단조 증가 타임스탬프(ms) — 호출자가 제공
-  x: number; // 손목(landmark 0) x 좌표 [0, 1] 정규화
+  t: number;       // 단조 증가 타임스탬프(ms)
+  x: number;       // 손목(landmark 0) x 좌표 [0, 1]
+  y: number;       // 손목(landmark 0) y 좌표 [0, 1]
+  indexX: number;  // 검지 끝(landmark 8) x 좌표 [0, 1]
+  indexY: number;  // 검지 끝(landmark 8) y 좌표 [0, 1]
   gesture: GestureName;
-  score: number; // 제스처 신뢰도 [0, 1]
+  score: number;   // 제스처 신뢰도 [0, 1]
 }>;
 
 export type SwipeDirection = 'left' | 'right';

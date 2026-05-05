@@ -16,8 +16,12 @@ import { GestureController } from '@/components/GestureController';
 import { SwipeFeedback } from '@/components/SwipeFeedback';
 import { PageIndicator } from '@/components/PageIndicator';
 import { DebugOverlay } from '@/components/DebugOverlay';
+import { MenuOverlay } from '@/components/MenuOverlay';
+import { VirtualCursor } from '@/components/VirtualCursor';
+import { SlideTitlesInput } from '@/components/SlideTitlesInput';
 import { usePdfDocument } from '@/lib/application/usePdfDocument';
 import { useKeyboardNav } from '@/lib/application/useKeyboardNav';
+import { usePhase2Loop } from '@/lib/application/usePhase2Loop';
 import type { SwipeDirection, Sample } from '@/lib/domain/types';
 import type { LoopStatus, LoopError } from '@/lib/application/useGestureLoop';
 
@@ -37,9 +41,10 @@ function PresentationApp() {
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [gestureStatus, setGestureStatus] = useState<LoopStatus>('idle');
   const [swipeTrigger, setSwipeTrigger] = useState<SwipeDirection | 'boundary' | null>(null);
-  const [containerWidth, setContainerWidth] = useState(800);
   const [unsupported, setUnsupported] = useState(false);
-  const [cameraOn, setCameraOn] = useState(true); // 카메라 ON/OFF 상태
+  const [cameraOn, setCameraOn] = useState(true);
+  const [slideTitles, setSlideTitles] = useState<string[]>([]);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -47,17 +52,13 @@ function PresentationApp() {
 
   const pdfDoc = usePdfDocument();
 
+  const [screenSize, setScreenSize] = useState({ w: 1280, h: 720 });
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const observer = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      if (entry) setContainerWidth(entry.contentRect.width);
-    });
-    observer.observe(el);
-    setContainerWidth(el.clientWidth);
-    return () => observer.disconnect();
-  }, [mode]);
+    const update = () => setScreenSize({ w: window.innerWidth, h: window.innerHeight });
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
 
   useEffect(() => {
     setUnsupported(!isSupportedBrowser());
@@ -74,35 +75,26 @@ function PresentationApp() {
 
   const handleSwipe = useCallback(
     (dir: SwipeDirection) => {
+      // 메뉴 열려있으면 스와이프 무시
+      if (menuOpen) return;
       const { currentPage, pageCount } = pdfDoc.state;
       if (dir === 'right') {
-        if (currentPage >= pageCount) {
-          setSwipeTrigger('boundary');
-        } else {
-          pdfDoc.goNext();
-          setSwipeTrigger('right');
-        }
+        if (currentPage >= pageCount) setSwipeTrigger('boundary');
+        else { pdfDoc.goNext(); setSwipeTrigger('right'); }
       } else {
-        if (currentPage <= 1) {
-          setSwipeTrigger('boundary');
-        } else {
-          pdfDoc.goPrev();
-          setSwipeTrigger('left');
-        }
+        if (currentPage <= 1) setSwipeTrigger('boundary');
+        else { pdfDoc.goPrev(); setSwipeTrigger('left'); }
       }
       setTimeout(() => setSwipeTrigger(null), 350);
     },
-    [pdfDoc],
+    [pdfDoc, menuOpen],
   );
 
   const handleNext = useCallback(() => handleSwipe('right'), [handleSwipe]);
   const handlePrev = useCallback(() => handleSwipe('left'), [handleSwipe]);
   const handleFirst = useCallback(() => pdfDoc.goFirst(), [pdfDoc]);
   const handleLast = useCallback(() => pdfDoc.goLast(), [pdfDoc]);
-  const handleExit = useCallback(() => {
-    setMode('idle');
-    pdfDoc.close();
-  }, [pdfDoc]);
+  const handleExit = useCallback(() => { setMode('idle'); pdfDoc.close(); }, [pdfDoc]);
 
   useKeyboardNav(
     { onNext: handleNext, onPrev: handlePrev, onFirst: handleFirst, onLast: handleLast, onExit: handleExit },
@@ -117,19 +109,44 @@ function PresentationApp() {
         not_found: '웹캠을 찾을 수 없습니다',
         in_use: '카메라가 다른 앱에서 사용 중입니다',
         unknown: '카메라 오류가 발생했습니다',
-        mediapipe_load_failed: '제스처 모델을 불러올 수 없습니다. 새로고침해주세요.',
+        mediapipe_load_failed: '제스처 모델을 불러올 수 없습니다.',
       };
       setPdfError(msgs[error] ?? '알 수 없는 오류');
     }
   }, []);
 
-  const handleSample = useCallback((s: Sample) => {
-    debugSampleSetterRef.current?.(s);
-  }, []);
-
   const handleOnSampleRef = useCallback((setter: (s: Sample) => void) => {
     debugSampleSetterRef.current = setter;
   }, []);
+
+  const handleMenuOpen = useCallback(() => setMenuOpen(true), []);
+  const handleMenuClose = useCallback(() => setMenuOpen(false), []);
+  const handleJump = useCallback((index: number) => {
+    pdfDoc.goTo(index + 1);
+    setMenuOpen(false);
+  }, [pdfDoc]);
+
+  const { phase2State, pushSample } = usePhase2Loop({
+    onMenuOpen: handleMenuOpen,
+    onMenuClose: handleMenuClose,
+    onJump: handleJump,
+    slideCount: pdfDoc.state.pageCount,
+    screenW: screenSize.w,
+    screenH: screenSize.h,
+    enabled: gestureEnabled,
+  });
+
+  // pushSample이 선언된 후에 handleSample 정의
+  const handleSample = useCallback((s: Sample) => {
+    debugSampleSetterRef.current?.(s);
+    pushSample(s);
+  }, [pushSample]);
+
+  // 목차 제목 기본값 채우기
+  const displayTitles = Array.from(
+    { length: pdfDoc.state.pageCount },
+    (_, i) => slideTitles[i] || `슬라이드 ${i + 1}`,
+  );
 
   const canStart = cameraGranted && pdfDoc.state.pdf !== null;
 
@@ -138,9 +155,7 @@ function PresentationApp() {
     return (
       <div className="idle-screen">
         {unsupported && (
-          <div className="browser-warn">
-            ⚠️ Chrome 또는 Edge에서 사용해주세요
-          </div>
+          <div className="browser-warn">⚠️ Chrome 또는 Edge에서 사용해주세요</div>
         )}
         <h1 className="app-title">모션 인식 PPT 컨트롤러</h1>
         <p className="app-subtitle">손동작으로 슬라이드를 넘기세요</p>
@@ -151,6 +166,16 @@ function PresentationApp() {
             pageCount={pdfDoc.state.pageCount}
             error={pdfDoc.state.error}
           />
+
+          {/* 슬라이드 제목 입력 — PDF 업로드 후 표시 */}
+          {pdfDoc.state.pageCount > 0 && (
+            <SlideTitlesInput
+              pageCount={pdfDoc.state.pageCount}
+              titles={slideTitles}
+              onChange={setSlideTitles}
+            />
+          )}
+
           <div className="idle-section">
             <CameraPermission
               onGranted={() => setCameraGranted(true)}
@@ -165,7 +190,10 @@ function PresentationApp() {
           >
             발표 시작
           </button>
-          <div className="idle-hint">키보드: ← → Space / PageDown / ESC</div>
+          <div className="idle-hint">
+            손바닥 1.5초 정지 → 목차 메뉴 열기<br />
+            키보드: ← → Space / ESC
+          </div>
         </div>
         <style>{`
           .idle-screen { min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:24px; gap:16px; }
@@ -179,7 +207,7 @@ function PresentationApp() {
           .start-btn:disabled { opacity:0.35; cursor:not-allowed; }
           .start-btn:not(:disabled):hover { opacity:0.88; }
           .start-btn:not(:disabled):active { transform:scale(0.98); }
-          .idle-hint { color:var(--muted); font-size:0.78rem; text-align:center; }
+          .idle-hint { color:var(--muted); font-size:0.78rem; text-align:center; line-height:1.8; }
         `}</style>
       </div>
     );
@@ -195,7 +223,7 @@ function PresentationApp() {
             currentPage={pdfDoc.state.currentPage}
             onPageCount={pdfDoc.setPageCount}
             onError={(msg) => setPdfError(msg)}
-            containerWidth={containerWidth}
+            containerWidth={screenSize.w}
           />
         ) : null}
       </div>
@@ -208,9 +236,27 @@ function PresentationApp() {
         enabled={gestureEnabled}
       />
 
-      {/* 카메라 ON일 때만 프리뷰 표시 */}
-      {cameraOn && <CameraPreview videoRef={videoRef as RefObject<HTMLVideoElement>} />}
+      {/* 목차 오버레이 */}
+      {menuOpen && (
+        <MenuOverlay
+          titles={displayTitles}
+          currentPage={pdfDoc.state.currentPage}
+          hoveredIndex={phase2State.mode === 'menu' ? phase2State.dwellIndex : null}
+          dwellProgress={phase2State.mode === 'menu' ? phase2State.dwellProgress : 0}
+          scrollDelta={phase2State.mode === 'menu' ? phase2State.scrollDelta : 0}
+          onSelect={(i) => handleJump(i)}
+        />
+      )}
 
+      {/* 가상 커서 */}
+      <VirtualCursor
+        x={phase2State.mode === 'menu' ? phase2State.cursorX : 0}
+        y={phase2State.mode === 'menu' ? phase2State.cursorY : 0}
+        dwellProgress={phase2State.mode === 'menu' ? phase2State.dwellProgress : 0}
+        visible={phase2State.mode === 'menu'}
+      />
+
+      {cameraOn && <CameraPreview videoRef={videoRef as RefObject<HTMLVideoElement>} />}
       <SwipeFeedback trigger={swipeTrigger} />
 
       {pdfDoc.state.pageCount > 0 && (
@@ -219,7 +265,7 @@ function PresentationApp() {
 
       <DebugOverlay isDebug={isDebug} onSampleRef={handleOnSampleRef} />
 
-      {/* 카메라 토글 버튼 */}
+      {/* 카메라 토글 */}
       <button
         className={`camera-toggle-btn${cameraOn ? '' : ' off'}`}
         onClick={() => setCameraOn((v) => !v)}
@@ -228,7 +274,7 @@ function PresentationApp() {
         {cameraOn ? '📷' : '📷✕'}
       </button>
 
-      {/* 종료 버튼 */}
+      {/* 종료 */}
       <button
         className="exit-btn"
         onClick={() => { setMode('idle'); pdfDoc.close(); }}
@@ -250,14 +296,7 @@ function PresentationApp() {
       <style>{`
         .present-screen { position:fixed; inset:0; background:var(--bg); display:flex; align-items:center; justify-content:center; overflow:hidden; }
         .pdf-container { width:100vw; height:100vh; display:flex; align-items:center; justify-content:center; overflow:hidden; }
-        .camera-toggle-btn {
-          position:fixed; bottom:60px; right:16px;
-          width:44px; height:44px; border-radius:50%;
-          background:rgba(0,0,0,0.6); border:1px solid rgba(255,255,255,0.3);
-          color:var(--fg); font-size:16px; cursor:pointer; z-index:200;
-          display:flex; align-items:center; justify-content:center;
-          transition:background 0.2s;
-        }
+        .camera-toggle-btn { position:fixed; bottom:60px; right:16px; width:44px; height:44px; border-radius:50%; background:rgba(0,0,0,0.6); border:1px solid rgba(255,255,255,0.3); color:var(--fg); font-size:16px; cursor:pointer; z-index:200; display:flex; align-items:center; justify-content:center; transition:background 0.2s; }
         .camera-toggle-btn:hover { background:rgba(0,217,192,0.3); }
         .camera-toggle-btn.off { background:rgba(255,90,95,0.4); border-color:var(--error); }
         .exit-btn { position:fixed; bottom:16px; right:16px; width:36px; height:36px; border-radius:50%; background:rgba(0,0,0,0.5); border:1px solid rgba(255,255,255,0.2); color:var(--fg); font-size:14px; cursor:pointer; z-index:200; display:flex; align-items:center; justify-content:center; transition:background 0.2s; }
