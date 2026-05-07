@@ -51,6 +51,11 @@ export function CameraPermission({ onGranted, onError }: Props) {
       <div className="cam-status granted">
         <span className="cam-dot" />
         카메라 허용됨
+        <style>{`
+          .cam-status { display:flex; align-items:center; gap:8px; font-size:0.9rem; }
+          .cam-status.granted { color: var(--accent); }
+          .cam-dot { width:8px; height:8px; border-radius:50%; background:var(--accent); display:inline-block; }
+        `}</style>
       </div>
     );
   }
@@ -58,7 +63,11 @@ export function CameraPermission({ onGranted, onError }: Props) {
   return (
     <div className="cam-permission">
       {status === 'idle' || status === 'requesting' ? (
-        <button className="cam-btn" onClick={requestPermission} disabled={status === 'requesting'}>
+        <button
+          className="cam-btn"
+          onClick={requestPermission}
+          disabled={status === 'requesting'}
+        >
           {status === 'requesting' ? '요청 중...' : '📷 카메라 권한 요청'}
         </button>
       ) : (
@@ -81,13 +90,14 @@ export function CameraPermission({ onGranted, onError }: Props) {
         .cam-btn {
           padding: 10px 20px;
           background: var(--accent);
-          color: #000;
+          color: #fff;
           border: none;
           border-radius: 8px;
           font-size: 0.9rem;
           font-weight: 600;
           cursor: pointer;
           transition: opacity 0.2s;
+          width: 100%;
         }
         .cam-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .cam-btn.secondary {

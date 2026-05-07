@@ -19,9 +19,12 @@ import { DebugOverlay } from '@/components/DebugOverlay';
 import { MenuOverlay } from '@/components/MenuOverlay';
 import { VirtualCursor } from '@/components/VirtualCursor';
 import { SlideTitlesInput } from '@/components/SlideTitlesInput';
+import { SpeechIndicator } from '@/components/SpeechIndicator';
+import { MicPermission } from '@/components/MicPermission';
 import { usePdfDocument } from '@/lib/application/usePdfDocument';
 import { useKeyboardNav } from '@/lib/application/useKeyboardNav';
 import { usePhase2Loop } from '@/lib/application/usePhase2Loop';
+import { useSpeechRecognition } from '@/lib/application/useSpeechRecognition';
 import type { SwipeDirection, Sample } from '@/lib/domain/types';
 import type { LoopStatus, LoopError } from '@/lib/application/useGestureLoop';
 
@@ -45,6 +48,8 @@ function PresentationApp() {
   const [cameraOn, setCameraOn] = useState(true);
   const [slideTitles, setSlideTitles] = useState<string[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [speechEnabled, setSpeechEnabled] = useState(false);
+  const [micGranted, setMicGranted] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -136,6 +141,23 @@ function PresentationApp() {
     enabled: gestureEnabled,
   });
 
+  const handleVoiceCommand = useCallback((cmd: import('@/lib/application/useSpeechRecognition').VoiceCommand) => {
+    switch (cmd) {
+      case 'next': handleSwipe('right'); break;
+      case 'prev': handleSwipe('left'); break;
+      case 'first': pdfDoc.goFirst(); break;
+      case 'last': pdfDoc.goLast(); break;
+      case 'menu':
+        setMenuOpen((v) => !v);
+        break;
+    }
+  }, [handleSwipe, pdfDoc]);
+
+  const { status: speechStatus, lastHeard } = useSpeechRecognition({
+    onCommand: handleVoiceCommand,
+    enabled: speechEnabled && mode === 'present',
+  });
+
   // pushSample이 선언된 후에 handleSample 정의
   const handleSample = useCallback((s: Sample) => {
     debugSampleSetterRef.current?.(s);
@@ -157,8 +179,8 @@ function PresentationApp() {
         {unsupported && (
           <div className="browser-warn">⚠️ Chrome 또는 Edge에서 사용해주세요</div>
         )}
-        <h1 className="app-title">모션 인식 PPT 컨트롤러</h1>
-        <p className="app-subtitle">손동작으로 슬라이드를 넘기세요</p>
+        <h1 className="app-title">모션 및 음성 인식 PPT 컨트롤러</h1>
+        <p className="app-subtitle">손동작과 목소리로 슬라이드를 넘기세요</p>
         <div className="idle-card">
           <PdfDropzone
             onFile={pdfDoc.open}
@@ -182,6 +204,12 @@ function PresentationApp() {
               onError={() => setCameraGranted(false)}
             />
           </div>
+          <div className="idle-section">
+            <MicPermission
+              onGranted={() => { setMicGranted(true); setSpeechEnabled(true); }}
+              onError={() => {}}
+            />
+          </div>
           {pdfError && <div className="idle-error">{pdfError}</div>}
           <button
             className="start-btn"
@@ -190,24 +218,51 @@ function PresentationApp() {
           >
             발표 시작
           </button>
-          <div className="idle-hint">
-            손바닥 1.5초 정지 → 목차 메뉴 열기<br />
-            키보드: ← → Space / ESC
+
+          {/* 사용 설명서 */}
+          <div className="guide">
+            <div className="guide-section">
+              <div className="guide-title">🖐 모션 인식</div>
+              <ul className="guide-list">
+                <li><span className="guide-key">검지 / 손바닥 → 오른쪽</span> 다음 페이지</li>
+                <li><span className="guide-key">검지 / 손바닥 → 왼쪽</span> 이전 페이지</li>
+                <li><span className="guide-key">✊ 주먹 1.5초</span> 목차 열기 / 닫기</li>
+                <li><span className="guide-key">☝ 검지 정지</span> 가상 커서 생성</li>
+              </ul>
+            </div>
+            <div className="guide-section">
+              <div className="guide-title">🎤 음성 인식</div>
+              <ul className="guide-list">
+                <li><span className="guide-key">"다음"</span> 다음 페이지</li>
+                <li><span className="guide-key">"뒤로"</span> 이전 페이지</li>
+                <li><span className="guide-key">"목차"</span> 목차 열기 / 닫기</li>
+                <li><span className="guide-key">"처음"</span> 첫 페이지</li>
+                <li><span className="guide-key">"끝"</span> 마지막 페이지</li>
+              </ul>
+            </div>
+            <div className="guide-keyboard">⌨ 키보드: ← → Space / Home / End / ESC</div>
           </div>
         </div>
         <style>{`
-          .idle-screen { min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:24px; gap:16px; }
-          .browser-warn { background:rgba(255,90,95,0.15); border:1px solid var(--error); border-radius:8px; padding:10px 16px; font-size:0.85rem; color:var(--error); max-width:480px; text-align:center; }
-          .app-title { font-size:1.8rem; font-weight:700; margin:0; text-align:center; }
+          .idle-screen { min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:24px; gap:16px; background:#ffffff; }
+          .browser-warn { background:rgba(224,59,36,0.08); border:1px solid var(--error); border-radius:8px; padding:10px 16px; font-size:0.85rem; color:var(--error); max-width:480px; text-align:center; }
+          .app-title { font-size:1.8rem; font-weight:700; margin:0; text-align:center; background: linear-gradient(90deg, #e03b24, #d04a02); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
           .app-subtitle { color:var(--muted); font-size:1rem; margin:0; }
-          .idle-card { width:100%; max-width:480px; display:flex; flex-direction:column; gap:20px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:16px; padding:28px; }
+          .idle-card { width:100%; max-width:480px; display:flex; flex-direction:column; gap:20px; background:#fff; border:1px solid rgba(224,59,36,0.2); border-radius:16px; padding:28px; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }
           .idle-section { display:flex; flex-direction:column; gap:8px; }
           .idle-error { color:var(--error); font-size:0.85rem; text-align:center; }
-          .start-btn { padding:14px; background:var(--accent); color:#000; border:none; border-radius:10px; font-size:1.05rem; font-weight:700; cursor:pointer; transition:opacity 0.2s,transform 0.1s; }
+          .start-btn { padding:14px; background: linear-gradient(90deg, #e03b24, #d04a02); color:#fff; border:none; border-radius:10px; font-size:1.05rem; font-weight:700; cursor:pointer; transition:opacity 0.2s,transform 0.1s; }
           .start-btn:disabled { opacity:0.35; cursor:not-allowed; }
           .start-btn:not(:disabled):hover { opacity:0.88; }
           .start-btn:not(:disabled):active { transform:scale(0.98); }
           .idle-hint { color:var(--muted); font-size:0.78rem; text-align:center; line-height:1.8; }
+          .guide { display:flex; flex-direction:column; gap:12px; border-top:1px solid rgba(0,0,0,0.08); padding-top:16px; }
+          .guide-section { display:flex; flex-direction:column; gap:6px; }
+          .guide-title { font-size:0.88rem; font-weight:700; color:var(--fg); }
+          .guide-list { margin:0; padding-left:0; list-style:none; display:flex; flex-direction:column; gap:4px; }
+          .guide-list li { font-size:0.82rem; color:var(--muted); display:flex; align-items:center; gap:8px; }
+          .guide-key { background:rgba(224,59,36,0.1); color:var(--accent); border-radius:4px; padding:2px 7px; font-size:0.8rem; font-weight:600; white-space:nowrap; }
+          .guide-keyboard { display:none; }
         `}</style>
       </div>
     );
@@ -264,6 +319,14 @@ function PresentationApp() {
       )}
 
       <DebugOverlay isDebug={isDebug} onSampleRef={handleOnSampleRef} />
+
+      {/* 음성 인식 인디케이터 */}
+      <SpeechIndicator
+        status={speechStatus}
+        lastHeard={lastHeard}
+        enabled={speechEnabled}
+        onToggle={() => setSpeechEnabled((v) => !v)}
+      />
 
       {/* 카메라 토글 */}
       <button
