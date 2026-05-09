@@ -8,36 +8,34 @@ type Props = {
   onToggle: () => void;
 };
 
-const STATUS_ICON: Record<SpeechStatus, string> = {
-  idle: '🎤',
-  listening: '🔴',
-  error: '🎤✕',
-  unsupported: '🎤✕',
-};
-
-const STATUS_LABEL: Record<SpeechStatus, string> = {
-  idle: '음성 꺼짐',
-  listening: '음성 인식 중',
-  error: '음성 오류',
-  unsupported: '미지원 브라우저',
-};
+// 음파 SVG 아이콘 (이미지처럼 파형 모양)
+function WaveIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="1" y="8" width="2.5" height="6" rx="1.25" fill="#fff" opacity="0.7" />
+      <rect x="5" y="4" width="2.5" height="14" rx="1.25" fill="#fff" opacity="0.85" />
+      <rect x="9" y="1" width="2.5" height="20" rx="1.25" fill="#fff" />
+      <rect x="13" y="4" width="2.5" height="14" rx="1.25" fill="#fff" opacity="0.85" />
+      <rect x="17" y="8" width="2.5" height="6" rx="1.25" fill="#fff" opacity="0.7" />
+    </svg>
+  );
+}
 
 export function SpeechIndicator({ status, lastHeard, enabled, onToggle }: Props) {
+  const isListening = status === 'listening';
+
   return (
     <div className="speech-wrapper">
-      {/* 마지막으로 인식된 단어 */}
-      {status === 'listening' && lastHeard && (
+      {isListening && lastHeard && (
         <div className="speech-heard">"{lastHeard}"</div>
       )}
-
-      {/* 마이크 토글 버튼 */}
       <button
-        className={`speech-btn${status === 'listening' ? ' listening' : ''}${status === 'error' || status === 'unsupported' ? ' error' : ''}`}
+        className={`speech-btn${isListening ? ' listening' : ''}${status === 'error' || status === 'unsupported' ? ' error' : ''}`}
         onClick={onToggle}
-        title={STATUS_LABEL[status]}
         disabled={status === 'unsupported'}
+        title={isListening ? '음성 인식 중 — 클릭해서 끄기' : '음성 인식 켜기'}
       >
-        {STATUS_ICON[status]}
+        <WaveIcon />
       </button>
 
       <style>{`
@@ -52,47 +50,51 @@ export function SpeechIndicator({ status, lastHeard, enabled, onToggle }: Props)
           z-index: 200;
         }
         .speech-heard {
-          background: rgba(0,0,0,0.75);
-          color: #00d9c0;
-          font-size: 0.8rem;
-          padding: 4px 10px;
+          position: fixed;
+          bottom: 196px;
+          right: 16px;
+          background: rgba(0,0,0,0.85);
+          color: #22c55e;
+          font-size: 0.78rem;
+          padding: 3px 10px;
           border-radius: 12px;
           max-width: 160px;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
-          animation: fadeIn 0.2s ease;
-        }
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(4px); }
-          to { opacity: 1; transform: translateY(0); }
+          font-family: Arial, sans-serif;
+          border: 1px solid rgba(34,197,94,0.3);
         }
         .speech-btn {
-          width: 44px; height: 44px;
+          width: 44px;
+          height: 44px;
           border-radius: 50%;
-          background: rgba(0,0,0,0.6);
-          border: 1px solid rgba(255,255,255,0.3);
-          color: var(--fg);
-          font-size: 16px;
+          background: rgba(50,50,50,0.85);
+          border: 1.5px solid rgba(255,255,255,0.25);
           cursor: pointer;
           display: flex;
           align-items: center;
           justify-content: center;
-          transition: background 0.2s;
+          transition: background 0.2s, border-color 0.2s;
+        }
+        .speech-btn:hover {
+          background: rgba(253,81,8,0.35);
+          border-color: #FD5108;
         }
         .speech-btn.listening {
-          background: rgba(0,217,192,0.25);
-          border-color: #00d9c0;
-          animation: pulse 1.5s infinite;
+          background: rgba(50,50,50,0.85);
+          border-color: #FD5108;
+          border-width: 2px;
+          animation: pulse-orange 1.5s infinite;
         }
         .speech-btn.error {
-          background: rgba(255,90,95,0.4);
-          border-color: var(--error);
+          background: rgba(50,50,50,0.85);
+          border-color: #DC2626;
         }
         .speech-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-        @keyframes pulse {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(0,217,192,0.4); }
-          50% { box-shadow: 0 0 0 8px rgba(0,217,192,0); }
+        @keyframes pulse-orange {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(253,81,8,0.5); }
+          50% { box-shadow: 0 0 0 8px rgba(253,81,8,0); }
         }
       `}</style>
     </div>

@@ -1,14 +1,10 @@
 'use client';
-// 스와이프 시각 피드백 — 가장자리 글로우 + 페이지 한계 흔들림
 import { useEffect, useState } from 'react';
 import { FEEDBACK_DURATION_MS } from '@/lib/domain/config';
 import type { SwipeDirection } from '@/lib/domain/types';
 
 type FeedbackKind = 'swipe-right' | 'swipe-left' | 'boundary' | null;
-
-type Props = {
-  trigger: SwipeDirection | 'boundary' | null;
-};
+type Props = { trigger: SwipeDirection | 'boundary' | null; };
 
 export function SwipeFeedback({ trigger }: Props) {
   const [active, setActive] = useState<FeedbackKind>(null);
@@ -30,7 +26,6 @@ export function SwipeFeedback({ trigger }: Props) {
           inset: 0;
           pointer-events: none;
           z-index: 50;
-          transition: none;
         }
         .swipe-feedback.swipe-right {
           animation: glow-right ${FEEDBACK_DURATION_MS}ms ease forwards;

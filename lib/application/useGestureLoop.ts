@@ -73,6 +73,12 @@ export function useGestureLoop({ videoRef, onSwipe, onSample, enabled }: UseGest
             const result = detectSwipe(stateRef.current, sample, DEFAULT_SWIPE_CONFIG);
             stateRef.current = result.state;
             if (result.swipe) onSwipeRef.current(result.swipe);
+          } else {
+            // 손이 카메라에서 사라지면 쿨다운 즉시 해제
+            // → 팔 돌아오는 동작 무시하면서 빠른 연속 스와이프 가능
+            if (stateRef.current.cooldownUntil > 0) {
+              stateRef.current = { buffer: [], cooldownUntil: 0 };
+            }
           }
           rafRef.current = requestAnimationFrame(tick);
         };

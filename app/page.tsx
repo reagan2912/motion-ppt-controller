@@ -1,4 +1,5 @@
 'use client';
+// 단일 페이지 SPA — 'idle'(시작 화면) / 'present'(발표 모드) 상태로 전환
 import {
   useState,
   useRef,
@@ -10,6 +11,7 @@ import { useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 import { PdfDropzone } from '@/components/PdfDropzone';
 import { CameraPermission } from '@/components/CameraPermission';
+import { MicPermission } from '@/components/MicPermission';
 import { PdfViewer } from '@/components/PdfViewer';
 import { CameraPreview } from '@/components/CameraPreview';
 import { GestureController } from '@/components/GestureController';
@@ -20,16 +22,19 @@ import { MenuOverlay } from '@/components/MenuOverlay';
 import { VirtualCursor } from '@/components/VirtualCursor';
 import { SlideTitlesInput } from '@/components/SlideTitlesInput';
 import { SpeechIndicator } from '@/components/SpeechIndicator';
-import { MicPermission } from '@/components/MicPermission';
+import { RecordButton } from '@/components/RecordButton';
 import { usePdfDocument } from '@/lib/application/usePdfDocument';
 import { useKeyboardNav } from '@/lib/application/useKeyboardNav';
 import { usePhase2Loop } from '@/lib/application/usePhase2Loop';
 import { useSpeechRecognition } from '@/lib/application/useSpeechRecognition';
-import type { SwipeDirection, Sample } from '@/lib/domain/types';
+import { useScreenRecorder } from '@/lib/application/useScreenRecorder';
+import type { SwipeDirection } from '@/lib/domain/types';
+import type { Sample } from '@/lib/domain/types';
 import type { LoopStatus, LoopError } from '@/lib/application/useGestureLoop';
 
 type AppMode = 'idle' | 'present';
 
+// 브라우저 호환성 체크
 function isSupportedBrowser(): boolean {
   if (typeof navigator === 'undefined') return true;
   return 'mediaDevices' in navigator;
@@ -44,16 +49,19 @@ function PresentationApp() {
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [gestureStatus, setGestureStatus] = useState<LoopStatus>('idle');
   const [swipeTrigger, setSwipeTrigger] = useState<SwipeDirection | 'boundary' | null>(null);
+  const [containerWidth, setContainerWidth] = useState(800);
   const [unsupported, setUnsupported] = useState(false);
   const [cameraOn, setCameraOn] = useState(true);
   const [slideTitles, setSlideTitles] = useState<string[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [speechEnabled, setSpeechEnabled] = useState(false);
   const [micGranted, setMicGranted] = useState(false);
+  const [currentGesture, setCurrentGesture] = useState('');
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const debugSampleSetterRef = useRef<((s: Sample) => void) | null>(null);
+  const phase2SampleRef = useRef<((s: Sample) => void) | null>(null);
 
   const pdfDoc = usePdfDocument();
 
@@ -65,10 +73,25 @@ function PresentationApp() {
     return () => window.removeEventListener('resize', update);
   }, []);
 
+  // 컨테이너 너비 측정 (PDF 렌더 크기)
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry) setContainerWidth(entry.contentRect.width);
+    });
+    observer.observe(el);
+    setContainerWidth(el.clientWidth);
+    return () => observer.disconnect();
+  }, [mode]);
+
+  // 브라우저 호환성 체크
   useEffect(() => {
     setUnsupported(!isSupportedBrowser());
   }, []);
 
+  // 탭 비활성 시 카메라 일시정지 (E-10)
   const [tabVisible, setTabVisible] = useState(true);
   useEffect(() => {
     const handleVisibility = () => setTabVisible(document.visibilityState === 'visible');
@@ -80,7 +103,6 @@ function PresentationApp() {
 
   const handleSwipe = useCallback(
     (dir: SwipeDirection) => {
-      // 메뉴 열려있으면 스와이프 무시
       if (menuOpen) return;
       const { currentPage, pageCount } = pdfDoc.state;
       if (dir === 'right') {
@@ -141,15 +163,19 @@ function PresentationApp() {
     enabled: gestureEnabled,
   });
 
+  const handleSample = useCallback((s: Sample) => {
+    debugSampleSetterRef.current?.(s);
+    pushSample(s);
+    setCurrentGesture(s.gesture);
+  }, [pushSample]);
+
   const handleVoiceCommand = useCallback((cmd: import('@/lib/application/useSpeechRecognition').VoiceCommand) => {
     switch (cmd) {
       case 'next': handleSwipe('right'); break;
       case 'prev': handleSwipe('left'); break;
       case 'first': pdfDoc.goFirst(); break;
       case 'last': pdfDoc.goLast(); break;
-      case 'menu':
-        setMenuOpen((v) => !v);
-        break;
+      case 'menu': setMenuOpen((v) => !v); break;
     }
   }, [handleSwipe, pdfDoc]);
 
@@ -158,13 +184,8 @@ function PresentationApp() {
     enabled: speechEnabled && mode === 'present',
   });
 
-  // pushSample이 선언된 후에 handleSample 정의
-  const handleSample = useCallback((s: Sample) => {
-    debugSampleSetterRef.current?.(s);
-    pushSample(s);
-  }, [pushSample]);
+  const { status: recordStatus, toggle: toggleRecord } = useScreenRecorder();
 
-  // 목차 제목 기본값 채우기
   const displayTitles = Array.from(
     { length: pdfDoc.state.pageCount },
     (_, i) => slideTitles[i] || `슬라이드 ${i + 1}`,
@@ -172,15 +193,24 @@ function PresentationApp() {
 
   const canStart = cameraGranted && pdfDoc.state.pdf !== null;
 
-  // ── 시작 화면 ──
+  // ───────────────────────────────
+  // 시작 화면 (Idle)
+  // ───────────────────────────────
   if (mode === 'idle') {
     return (
       <div className="idle-screen">
+        {/* 타이틀 */}
+        <div className="app-header">
+          <h1 className="app-title">모션 및 음성 인식 PPT 컨트롤러</h1>
+          <p className="app-subtitle">손동작과 목소리로 슬라이드를 넘기세요</p>
+        </div>
+
         {unsupported && (
-          <div className="browser-warn">⚠️ Chrome 또는 Edge에서 사용해주세요</div>
+          <div className="browser-warn">
+            ⚠️ Chrome 또는 Edge에서 사용해주세요
+          </div>
         )}
-        <h1 className="app-title">모션 및 음성 인식 PPT 컨트롤러</h1>
-        <p className="app-subtitle">손동작과 목소리로 슬라이드를 넘기세요</p>
+
         <div className="idle-card">
           <PdfDropzone
             onFile={pdfDoc.open}
@@ -189,7 +219,6 @@ function PresentationApp() {
             error={pdfDoc.state.error}
           />
 
-          {/* 슬라이드 제목 입력 — PDF 업로드 후 표시 */}
           {pdfDoc.state.pageCount > 0 && (
             <SlideTitlesInput
               pageCount={pdfDoc.state.pageCount}
@@ -204,13 +233,16 @@ function PresentationApp() {
               onError={() => setCameraGranted(false)}
             />
           </div>
+
           <div className="idle-section">
             <MicPermission
               onGranted={() => { setMicGranted(true); setSpeechEnabled(true); }}
               onError={() => {}}
             />
           </div>
+
           {pdfError && <div className="idle-error">{pdfError}</div>}
+
           <button
             className="start-btn"
             disabled={!canStart}
@@ -240,37 +272,151 @@ function PresentationApp() {
                 <li><span className="guide-key">"끝"</span> 마지막 페이지</li>
               </ul>
             </div>
-            <div className="guide-keyboard">⌨ 키보드: ← → Space / Home / End / ESC</div>
           </div>
         </div>
+
+
+
         <style>{`
-          .idle-screen { min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:24px; gap:16px; background:#ffffff; }
-          .browser-warn { background:rgba(224,59,36,0.08); border:1px solid var(--error); border-radius:8px; padding:10px 16px; font-size:0.85rem; color:var(--error); max-width:480px; text-align:center; }
-          .app-title { font-size:1.8rem; font-weight:700; margin:0; text-align:center; background: linear-gradient(90deg, #e03b24, #d04a02); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
-          .app-subtitle { color:var(--muted); font-size:1rem; margin:0; }
-          .idle-card { width:100%; max-width:480px; display:flex; flex-direction:column; gap:20px; background:#fff; border:1px solid rgba(224,59,36,0.2); border-radius:16px; padding:28px; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }
-          .idle-section { display:flex; flex-direction:column; gap:8px; }
-          .idle-error { color:var(--error); font-size:0.85rem; text-align:center; }
-          .start-btn { padding:14px; background: linear-gradient(90deg, #e03b24, #d04a02); color:#fff; border:none; border-radius:10px; font-size:1.05rem; font-weight:700; cursor:pointer; transition:opacity 0.2s,transform 0.1s; }
-          .start-btn:disabled { opacity:0.35; cursor:not-allowed; }
-          .start-btn:not(:disabled):hover { opacity:0.88; }
-          .start-btn:not(:disabled):active { transform:scale(0.98); }
-          .idle-hint { color:var(--muted); font-size:0.78rem; text-align:center; line-height:1.8; }
-          .guide { display:flex; flex-direction:column; gap:12px; border-top:1px solid rgba(0,0,0,0.08); padding-top:16px; }
-          .guide-section { display:flex; flex-direction:column; gap:6px; }
-          .guide-title { font-size:0.88rem; font-weight:700; color:var(--fg); }
-          .guide-list { margin:0; padding-left:0; list-style:none; display:flex; flex-direction:column; gap:4px; }
-          .guide-list li { font-size:0.82rem; color:var(--muted); display:flex; align-items:center; gap:8px; }
-          .guide-key { background:rgba(224,59,36,0.1); color:var(--accent); border-radius:4px; padding:2px 7px; font-size:0.8rem; font-weight:600; white-space:nowrap; }
-          .guide-keyboard { display:none; }
+          .idle-screen {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            gap: 0;
+            background: #fff;
+            position: relative;
+          }
+          .pwc-top-bar {
+            width: 100%;
+            height: 4px;
+            background: linear-gradient(to right, #FFF5ED, #FFCDA8 40%, #FD5108);
+            flex-shrink: 0;
+          }
+          .pwc-logo-wrap {
+            align-self: flex-start;
+            padding: 20px 0 0 0;
+            margin-bottom: 24px;
+          }
+          .app-header {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 20px;
+            text-align: center;
+          }
+          .app-title {
+            font-family: Georgia, Noto Serif KR, serif;
+            font-size: 1.9rem;
+            font-weight: 700;
+            line-height: 1.0;
+            margin: 0;
+            color: #000;
+          }
+          .app-subtitle {
+            font-family: Arial, Noto Sans KR, sans-serif;
+            color: #A1A8B3;
+            font-size: 0.95rem;
+            margin: 0;
+            font-weight: 400;
+          }
+          .browser-warn {
+            background: #FEF2F2;
+            border: 1px solid #DC2626;
+            border-radius: 6px;
+            padding: 10px 16px;
+            font-size: 0.82rem;
+            color: #DC2626;
+            max-width: 480px;
+            text-align: center;
+            margin-bottom: 12px;
+          }
+          .idle-card {
+            width: 100%;
+            max-width: 480px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            background: #fff;
+            border: 1px solid #DFE3E6;
+            border-radius: 8px;
+            padding: 24px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+          }
+          .idle-section { display: flex; flex-direction: column; gap: 6px; }
+          .idle-error { color: #DC2626; font-size: 0.82rem; text-align: center; }
+          .start-btn {
+            padding: 13px;
+            background: #FD5108;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            font-family: Arial, Noto Sans KR, sans-serif;
+            transition: background 0.15s;
+            letter-spacing: 0;
+          }
+          .start-btn:disabled { background: #CBD1D6; cursor: not-allowed; }
+          .start-btn:not(:disabled):hover { background: #E54A07; }
+          .start-btn:not(:disabled):active { background: #CC4006; }
+          .guide {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            border-top: 1px solid #EEEFF1;
+            padding-top: 14px;
+          }
+          .guide-section { display: flex; flex-direction: column; gap: 5px; }
+          .guide-title {
+            font-size: 0.82rem;
+            font-weight: 700;
+            color: #000;
+            font-family: Arial, Noto Sans KR, sans-serif;
+          }
+          .guide-list {
+            margin: 0; padding-left: 0; list-style: none;
+            display: flex; flex-direction: column; gap: 3px;
+          }
+          .guide-list li {
+            font-size: 0.8rem;
+            color: #A1A8B3;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-family: Arial, Noto Sans KR, sans-serif;
+          }
+          .guide-key {
+            background: #FFF5ED;
+            color: #FD5108;
+            border: 1px solid #FFE8D4;
+            border-radius: 4px;
+            padding: 1px 7px;
+            font-size: 0.78rem;
+            font-weight: 700;
+            white-space: nowrap;
+          }
+          .pwc-footer {
+            margin-top: 24px;
+            font-size: 0.72rem;
+            color: #A1A8B3;
+            font-family: Arial, sans-serif;
+          }
         `}</style>
       </div>
     );
   }
 
-  // ── 발표 모드 ──
+  // ───────────────────────────────
+  // 발표 모드 (Present)
+  // ───────────────────────────────
   return (
     <div className="present-screen">
+      {/* PDF 뷰어 영역 */}
       <div className="pdf-container" ref={containerRef as RefObject<HTMLDivElement>}>
         {pdfDoc.state.pdf ? (
           <PdfViewer
@@ -278,11 +424,12 @@ function PresentationApp() {
             currentPage={pdfDoc.state.currentPage}
             onPageCount={pdfDoc.setPageCount}
             onError={(msg) => setPdfError(msg)}
-            containerWidth={screenSize.w}
+            containerWidth={containerWidth}
           />
         ) : null}
       </div>
 
+      {/* 제스처 인식 (논비주얼) */}
       <GestureController
         videoRef={videoRef as RefObject<HTMLVideoElement>}
         onSwipe={handleSwipe}
@@ -290,6 +437,9 @@ function PresentationApp() {
         onStatusChange={handleGestureStatus}
         enabled={gestureEnabled}
       />
+
+      {cameraOn && <CameraPreview videoRef={videoRef as RefObject<HTMLVideoElement>} />}
+      <SwipeFeedback trigger={swipeTrigger} />
 
       {/* 목차 오버레이 */}
       {menuOpen && (
@@ -311,16 +461,20 @@ function PresentationApp() {
         visible={phase2State.mode === 'menu'}
       />
 
-      {cameraOn && <CameraPreview videoRef={videoRef as RefObject<HTMLVideoElement>} />}
-      <SwipeFeedback trigger={swipeTrigger} />
-
       {pdfDoc.state.pageCount > 0 && (
-        <PageIndicator current={pdfDoc.state.currentPage} total={pdfDoc.state.pageCount} />
+        <PageIndicator
+          current={pdfDoc.state.currentPage}
+          total={pdfDoc.state.pageCount}
+          gesture={currentGesture}
+        />
       )}
 
       <DebugOverlay isDebug={isDebug} onSampleRef={handleOnSampleRef} />
 
-      {/* 음성 인식 인디케이터 */}
+      {/* 녹화 버튼 */}
+      <RecordButton status={recordStatus} onToggle={toggleRecord} />
+
+      {/* 음성 인식 */}
       <SpeechIndicator
         status={speechStatus}
         lastHeard={lastHeard}
@@ -357,16 +511,86 @@ function PresentationApp() {
       )}
 
       <style>{`
-        .present-screen { position:fixed; inset:0; background:var(--bg); display:flex; align-items:center; justify-content:center; overflow:hidden; }
-        .pdf-container { width:100vw; height:100vh; display:flex; align-items:center; justify-content:center; overflow:hidden; }
-        .camera-toggle-btn { position:fixed; bottom:60px; right:16px; width:44px; height:44px; border-radius:50%; background:rgba(0,0,0,0.6); border:1px solid rgba(255,255,255,0.3); color:var(--fg); font-size:16px; cursor:pointer; z-index:200; display:flex; align-items:center; justify-content:center; transition:background 0.2s; }
-        .camera-toggle-btn:hover { background:rgba(0,217,192,0.3); }
-        .camera-toggle-btn.off { background:rgba(255,90,95,0.4); border-color:var(--error); }
-        .exit-btn { position:fixed; bottom:16px; right:16px; width:36px; height:36px; border-radius:50%; background:rgba(0,0,0,0.5); border:1px solid rgba(255,255,255,0.2); color:var(--fg); font-size:14px; cursor:pointer; z-index:200; display:flex; align-items:center; justify-content:center; transition:background 0.2s; }
-        .exit-btn:hover { background:rgba(255,90,95,0.4); }
-        .gesture-loading { position:fixed; bottom:110px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.7); color:var(--muted); font-size:0.8rem; padding:6px 14px; border-radius:20px; z-index:200; }
-        .present-error { position:fixed; bottom:110px; left:50%; transform:translateX(-50%); background:rgba(255,90,95,0.15); border:1px solid var(--error); color:var(--error); font-size:0.85rem; padding:8px 16px; border-radius:8px; z-index:200; display:flex; gap:12px; align-items:center; }
-        .present-error button { background:none; border:none; color:var(--error); cursor:pointer; text-decoration:underline; font-size:0.8rem; }
+        .present-screen {
+          position: fixed;
+          inset: 0;
+          background: #F5F7F8;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          overflow: hidden;
+        }
+        .pdf-container {
+          width: 100vw;
+          height: 100vh;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          overflow: hidden;
+        }
+        /* 발표 모드 우하단 버튼 공통 스타일 */
+        .camera-toggle-btn,
+        .exit-btn {
+          width: 44px;
+          height: 44px;
+          border-radius: 50%;
+          background: rgba(50,50,50,0.85);
+          border: 1.5px solid rgba(255,255,255,0.25);
+          color: #fff;
+          font-size: 16px;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: background 0.2s, border-color 0.2s;
+          z-index: 200;
+          position: fixed;
+          right: 16px;
+        }
+        .camera-toggle-btn { bottom: 60px; }
+        .camera-toggle-btn:hover { background: rgba(253,81,8,0.35); border-color: #FD5108; }
+        .camera-toggle-btn.off { background: rgba(220,38,38,0.4); border-color: #DC2626; }
+        .exit-btn { bottom: 16px; font-size: 14px; }
+        .exit-btn:hover { background: rgba(253,81,8,0.35); border-color: #FD5108; }
+        .gesture-loading {
+          position: fixed;
+          bottom: 110px;
+          left: 50%;
+          transform: translateX(-50%);
+          background: rgba(0,0,0,0.75);
+          color: #A1A8B3;
+          font-size: 0.78rem;
+          padding: 6px 16px;
+          border-radius: 20px;
+          z-index: 200;
+          font-family: Arial, sans-serif;
+          border: 1px solid rgba(253,81,8,0.2);
+        }
+        .present-error {
+          position: fixed;
+          bottom: 110px;
+          left: 50%;
+          transform: translateX(-50%);
+          background: rgba(220,38,38,0.12);
+          border: 1px solid #DC2626;
+          color: #DC2626;
+          font-size: 0.82rem;
+          padding: 8px 16px;
+          border-radius: 6px;
+          z-index: 200;
+          display: flex;
+          gap: 12px;
+          align-items: center;
+          font-family: Arial, sans-serif;
+        }
+        .present-error button {
+          background: none;
+          border: none;
+          color: #DC2626;
+          cursor: pointer;
+          text-decoration: underline;
+          font-size: 0.78rem;
+        }
       `}</style>
     </div>
   );

@@ -1,68 +1,60 @@
+/* PwC Design System */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Noto+Serif+KR:wght@400;700&display=swap');
+
 :root {
-  --bg: #ffffff;
-  --bg2: #f5f5f5;
-  --fg: #1a1a2e;
-  --accent: #e03b24;
-  --accent2: #d04a02;
-  --error: #e03b24;
-  --muted: #6b6b80;
+  /* PwC Core Colors */
+  --pwc-orange: #FD5108;
+  --pwc-orange-400: #FE7C39;
+  --pwc-orange-300: #FFAA72;
+  --pwc-orange-200: #FFCDA8;
+  --pwc-orange-100: #FFE8D4;
+  --pwc-orange-50: #FFF5ED;
+  --pwc-black: #000000;
+  --pwc-white: #FFFFFF;
+  --pwc-grey-500: #A1A8B3;
+  --pwc-grey-400: #B5BCC4;
+  --pwc-grey-300: #CBD1D6;
+  --pwc-grey-200: #DFE3E6;
+  --pwc-grey-100: #EEEFF1;
+  --pwc-grey-50: #F5F7F8;
+
+  /* Semantic */
+  --bg: #FFFFFF;
+  --fg: #000000;
+  --accent: #FD5108;
+  --error: #DC2626;
+  --muted: #A1A8B3;
+
+  /* Typography */
+  --pwc-font-serif: Georgia, 'Noto Serif KR', serif;
+  --pwc-font-sans: Arial, 'Noto Sans KR', sans-serif;
 }
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
-html,
-body {
+html, body {
   margin: 0;
   padding: 0;
-  background: var(--bg);
-  color: var(--fg);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #fff;
+  color: #000;
+  font-family: Arial, 'Noto Sans KR', sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* 스와이프 시각 피드백 키프레임 */
+button { font-family: inherit; }
+a { color: #FD5108; }
+
+/* 스와이프 피드백 키프레임 */
 @keyframes glow-right {
-  0%,
-  100% {
-    box-shadow: inset -16px 0 0 transparent;
-  }
-  50% {
-    box-shadow: inset -16px 0 24px var(--accent);
-  }
+  0%, 100% { box-shadow: inset -16px 0 0 transparent; }
+  50% { box-shadow: inset -16px 0 24px rgba(253,81,8,0.25); }
 }
-
 @keyframes glow-left {
-  0%,
-  100% {
-    box-shadow: inset 16px 0 0 transparent;
-  }
-  50% {
-    box-shadow: inset 16px 0 24px var(--accent);
-  }
+  0%, 100% { box-shadow: inset 16px 0 0 transparent; }
+  50% { box-shadow: inset 16px 0 24px rgba(253,81,8,0.25); }
 }
-
 @keyframes shake {
-  0%,
-  100% {
-    transform: translateX(0);
-    box-shadow: inset 0 0 0 2px transparent;
-  }
-  25% {
-    transform: translateX(-8px);
-    box-shadow: inset 0 0 0 2px var(--error);
-  }
-  75% {
-    transform: translateX(8px);
-    box-shadow: inset 0 0 0 2px var(--error);
-  }
-}
-
-/* 버튼 공통 초기화 */
-button {
-  font-family: inherit;
-}
-
-a {
-  color: var(--accent);
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-8px); }
+  75% { transform: translateX(8px); }
 }

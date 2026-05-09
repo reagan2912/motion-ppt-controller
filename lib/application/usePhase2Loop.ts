@@ -106,11 +106,11 @@ export function usePhase2Loop({
       cursorStateRef.current = mapped.state;
 
       // Y축 이동으로 스크롤 감지
-      const SCROLL_SPEED = 300; // px/단위 — 값 높을수록 빠른 스크롤
+      const SCROLL_SPEED = 2000; // 600 → 2000: 손가락 조금만 움직여도 확 내려감
       let scrollDelta = 0;
       if (prevIndexYRef.current !== null) {
-        const dy = s.indexY - prevIndexYRef.current; // 양수=아래로 내림, 음수=위로 올림
-        if (Math.abs(dy) > 0.005) { // 미세 떨림 무시
+        const dy = s.indexY - prevIndexYRef.current;
+        if (Math.abs(dy) > 0.002) { // 0.005 → 0.002: 더 민감하게
           scrollDelta = dy * SCROLL_SPEED;
         }
       }
